@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="dimlux-producao">
+    <output-path>$PROJECT_DIR$/out/artifacts/dimlux_producao</output-path>
+    <root id="archive" name="dimlux-producao.jar">
+      <element id="module-output" name="dimlux-producao" />
+    </root>
+  </artifact>
+</component>
