@@ -32,43 +32,49 @@ public class TransfereParaLocalDeProducao implements AcaoRotinaJava {
 
         for (Registro linha: linhas) {
             BigDecimal nuNota = (BigDecimal) linha.getCampo("NUNOTA");
+            BigDecimal numNota = (BigDecimal) linha.getCampo("NUMNOTA");
 
             EntityFacade dwfFacade = EntityFacadeFactory.getDWFFacade();
             CabecalhoNotaVO cabVO = (CabecalhoNotaVO) dwfFacade.findEntityByPrimaryKeyAsVO(DynamicEntityNames.CABECALHO_NOTA, nuNota, CabecalhoNotaVO.class);
-            Collection<DynamicVO> itensVO = cabVO.asCollection(DynamicEntityNames.ITEM_NOTA);
+            final boolean notaConfirmada = "L".equals(cabVO.asString("STATUSNOTA"));
 
+            if (!notaConfirmada) contextoAcao.mostraErro("Nota não está confirmada.");
+
+            Collection<DynamicVO> itensVO = cabVO.asCollection(DynamicEntityNames.ITEM_NOTA);
             List<DynamicVO> itensRevenda = itensVO.stream().filter(vo -> "S".equals(StringUtils.getNullAsEmpty(vo.asDymamicVO(DynamicEntityNames.PRODUTO).asString("AD_REVENDA")))).collect(Collectors.toList());
 
-            if (CollectionUtils.isNotEmpty(itensRevenda)) {
-                CabecalhoNotaVO cabTransfVO = (CabecalhoNotaVO) dwfFacade.getDefaultValueObjectInstance(DynamicEntityNames.CABECALHO_NOTA, CabecalhoNotaVO.class);
-                cabTransfVO.setCODTIPOPER(BigDecimal.valueOf(701));
-                cabTransfVO.setTIPMOV("T");
-                cabTransfVO.setNUMNOTA(BigDecimal.ZERO);
-                cabTransfVO.setCODEMP(cabVO.getCODEMP());
-                cabTransfVO.setCODEMPNEGOC(cabVO.getCODEMP());
-                dwfFacade.createEntity(DynamicEntityNames.CABECALHO_NOTA, cabTransfVO);
+            //Mensagem de confirmação da ação
+            StringBuilder mensagem = new StringBuilder();
+            mensagem.append("Confirma a transferência dos produtos para o local 202 - FABRICA - AREA PRODUCAO?\n\n");
+            mensagem.append("PRODUTO\t\t\t\t\t\tQUANTIDADE\n");
+            itensRevenda.forEach(vo -> mensagem.append(vo.asString("REFERENCIA")).append(" - ").append(vo.asDymamicVO("Produto").asString("DESCRPROD")).append("\t").append(vo.asBigDecimalOrZero("QTDNEG")).append("\n"));
 
-                Collection<ItemNotaVO> itens = ItemNota.montaItensNota(itensRevenda, cabTransfVO, BigDecimal.valueOf(1001));
 
-                ItemNotaHelpper.saveItensNota(itens, cabTransfVO);
+            if (notaConfirmada && CollectionUtils.isNotEmpty(itensRevenda)) {
 
-                Collection<DynamicVO> itensteste = cabTransfVO.asCollection(DynamicEntityNames.ITEM_NOTA);
+                if (contextoAcao.confirmarSimNao("Aviso", mensagem.toString(), 1)) {
+                    CabecalhoNotaVO cabTransfVO = (CabecalhoNotaVO) dwfFacade.getDefaultValueObjectInstance(DynamicEntityNames.CABECALHO_NOTA, CabecalhoNotaVO.class);
+                    cabTransfVO.setCODTIPOPER(BigDecimal.valueOf(701));
+                    cabTransfVO.setTIPMOV("T");
+                    cabTransfVO.setNUMNOTA(BigDecimal.ZERO);
+                    cabTransfVO.setProperty("NUMPEDIDO2", numNota.toString());
+                    cabTransfVO.setCODEMP(cabVO.getCODEMP());
+                    dwfFacade.createEntity(DynamicEntityNames.CABECALHO_NOTA, cabTransfVO);
 
-                /*for (DynamicVO item: itensteste) {
-                    if (true) throw new MGEModelException("VLR UNIT: " + item.asBigDecimal("VLRUNIT") + " VLRTOT: " +item.asBigDecimal("VLRTOT"));
-                }*/
+                    Collection<ItemNotaVO> itens = ItemNota.montaItensNota(itensRevenda, cabTransfVO, BigDecimal.valueOf(202));
 
-                nuNotasTransf.add(cabTransfVO.getNUNOTA());
+                    ItemNotaHelpper.saveItensNota(itens, cabTransfVO);
 
-                ItemNotaHelpper.calcularTotalItens(cabTransfVO, null, null);
+                    nuNotasTransf.add(cabTransfVO.getNUNOTA());
+                    ItemNotaHelpper.calcularTotalItens(cabTransfVO, null, null);
 
-                // Recalculo de impostos
-                final ImpostosHelpper impostos = new ImpostosHelpper();
-                impostos.calcularImpostos(cabTransfVO.getNUNOTA());
-                impostos.totalizarNota(cabTransfVO.getNUNOTA());
-
-                // Refaz financeiro
-                //centralFinanceiro.refazerFinanceiro();
+                    // Recalculo de impostos
+                    final ImpostosHelpper impostos = new ImpostosHelpper();
+                    impostos.calcularImpostos(cabTransfVO.getNUNOTA());
+                    impostos.totalizarNota(cabTransfVO.getNUNOTA());
+                    // Refaz financeiro
+                    //centralFinanceiro.refazerFinanceiro();
+                }
 
             }
         }
